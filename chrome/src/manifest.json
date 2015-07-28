@@ -1,0 +1,46 @@
+{
+  "name" : "Viki-캍이",
+  "version" : "0.1",
+  "manifest_version" : 2,
+
+  "description" : "Watch Viki together!",
+  "icons" : {
+    "128" : "viki-kati-logo.png"
+  },
+
+  "browser_action": {
+    "default_icon" : "viki-kati-logo.png"
+  },
+
+  "author" : "Frank Cangialosi",
+
+  "background" : {
+    "persistent" : true,
+    "scripts" : [
+      "socket.io.js",
+      "background.js"
+    ]
+  },
+
+  "content_scripts" : [
+    {
+      "matches" : ["http://www.viki.com/videos/*"],
+      "css" : ["semantic.min.css"],
+      "js" : ["content_script.js","injector.js"]
+    }
+  ],
+
+  "web_accessible_resources" : [
+    "viki-kati-logo.png",
+    "api.js"
+  ],
+
+  "permissions" : [
+    "tabs",
+    "storage",
+    "webNavigation",
+    "webRequest",
+    "notifications",
+    "*://*.viki.com/*"
+  ]
+}
