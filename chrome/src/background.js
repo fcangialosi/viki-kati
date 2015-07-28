@@ -131,11 +131,13 @@ function forwardToServer(request,sender,sendResponse) {
       data = request;
       data.from = localStorage.username;
       localStorage.session_tab_id = sender.tab.id;
+      console.log("tab_id is " + sender.tab.id.toString());
 
     } else if (request.type == "ready") {
-
-      destination = "";
-      data = {};
+      console.log("forwarding ready to server");
+      data = {
+        username : localStorage.username
+      };
 
     } else if (request.type == "play") {
 
@@ -211,6 +213,12 @@ socket.on('watch-response', function(data) {
   sendToContentScript('watch-response', data, function (response) {
   });
 });
+
+socket.on('start', function(data) {
+  console.log('all ready!');
+  sendToContentScript('start', {}, function (response) {
+  });
+});
 /******************************************************************************/
 
 
@@ -228,16 +236,18 @@ chrome.notifications.onButtonClicked.addListener(function recievedResponse(id, b
       socket.emit('watch-response', {
         from : request.from,
         to : request.to,
-        answer : 'accept'
+        answer : 'accept',
+        room_id : request.room_id
       });
-      //localStorage.session_tab_id = tab.id;
-      //sendToContentScript('joined', {friend : request.friend});
+      localStorage.session_tab_id = tab.id;
+      sendToContentScript('joined', {friend : request.from});
     });
   } else { // Decline
     socket.emit('watch-response', {
       from : request.from,
       to : request.to,
-      answer : 'decline'
+      answer : 'decline',
+      room_id : request.room_id
     });
   }
 });
