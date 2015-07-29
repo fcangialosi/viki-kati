@@ -95,5 +95,15 @@ io.on('connection', function(socket) {
 			}
 		}
 	});
+
+	socket.on('video-event', function(data) {
+		room = rooms[users[data.from].room_id];
+		for (var i=0; i < room.ready.length; i++) {
+			user = room.ready[i];
+			if (user != data.from) {
+				client_sockets[user].emit('video-event', data);
+			}
+		}
+	});
 });
 

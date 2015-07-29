@@ -139,10 +139,11 @@ function forwardToServer(request,sender,sendResponse) {
         username : localStorage.username
       };
 
-    } else if (request.type == "play") {
+    } else if (request.type == "video-event") {
 
-      destination = "";
-      data = {};
+      destination = 'video-event';
+      data = request;
+      data.from = localStorage.username;
 
     } else if (request.type == "pause") {
 
@@ -217,6 +218,12 @@ socket.on('watch-response', function(data) {
 socket.on('start', function(data) {
   console.log('all ready!');
   sendToContentScript('start', {}, function (response) {
+  });
+});
+
+socket.on('video-event', function(data) {
+  console.log('got video event, forwarding to content script');
+  sendToContentScript('video-event', data, function (response) {
   });
 });
 /******************************************************************************/

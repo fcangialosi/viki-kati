@@ -6,7 +6,6 @@ var playerLoaded = false;
 var playerObject;
 var playerFrame;
 var alone = true;
-var ready = false;
 var syncd = false;
 
 // Create sidebar
@@ -118,11 +117,20 @@ function handleMessagesFromBackground(request,sender,sendResponse) {
         readyButton.setAttribute('class', 'small disabled ui inverted grey button');
         readyButton.innerHTML = "Enjoy! :)";
         startCountdown();
+        syncd = true;
+    } else if (request.type == "video-event") {
+        console.log("got video event");
+        if (request.action == "pause") {
+            playerObject.pause();
+            //playerObject.seekTo(request.time);
+        } else if (request.action == "resume") {
+            startCountdown();
+        }
     }
 }
 chrome.runtime.onMessage.addListener(handleMessagesFromBackground);
 
-readyButton.onclick = function ready() {
+readyButton.onclick = function () {
     console.log("clicked ready button");
     readyButton.setAttribute('class', 'small ui inverted button loading');
     chrome.runtime.sendMessage({type : 'ready'}, function (response) {});
@@ -138,12 +146,16 @@ function countdown() {
         countdown_position -= 1;
         countdown_text = document.getElementById("overlay-text")
         countdown_text.innerHTML = countdown_position.toString();
+        setTimeout(countdown, 1000);
+        console.log("decreased number to " + countdown_position.toString());
     } else {
         countdown_overlay = document.getElementById("overlay");
         countdown_overlay.parentElement.removeChild(countdown_overlay);
+        playerLocked = true;
         playerObject.playVideo();
-        countdown_position = 5;
-        clearInterval(countdown);
+        countdown_position = 3;
+        console.log("finished counting down. stopping timer now.");
+        playerLocked = false;
     }
 }
 function startCountdown() {
@@ -154,13 +166,16 @@ function startCountdown() {
     number = document.createElement('P');
     number.setAttribute('id', 'overlay-text');
     number.setAttribute('style', "text-align: center; vertical-align: middle; line-height: 100%; font-size:200px; color:#fff; font-family:'Montserrat'");
-    countdown_text = document.createTextNode("5");
+    countdown_text = document.createTextNode(countdown_position.toString());
     number.appendChild(countdown_text);
     countdown_overlay.appendChild(number);
     playerFrame.insertBefore(countdown_overlay, playerFrame.childNodes[0]);
     countdown_overlay = document.getElementById('overlay');
-    setInterval(countdown, 1000);
+    setTimeout(countdown, 1000);
 }
+
+playerLocked = false;
+
 //     playerObject.getCurrentTime();
 document.addEventListener('videoLoad', function(event) {
     playerLoaded = true;
@@ -174,15 +189,32 @@ document.addEventListener('videoStart', function(event) {
 });
 
 document.addEventListener('videoPause', function(event) {
-
+    if (syncd && !playerLocked) {
+        myPosition = playerObject.getCurrentTime();
+        //playerObject.seekTo(myPosition);
+        chrome.runtime.sendMessage({
+            type : 'video-event',
+            action : 'pause',
+            time : myPosition
+        });
+    }
 });
 
 document.addEventListener('videoResume', function(event) {
-
+    if (syncd && !playerLocked) {
+        playerLocked = true;
+        playerObject.pause();
+        chrome.runtime.sendMessage({
+            type : 'video-event',
+            action : 'resume'
+        });
+        startCountdown();
+        playerLocked = false;
+    }
 });
 
 document.addEventListener('videoSeek', function(event) {
-    console.log('cs.videoSeek');
+
 });
 
 document.addEventListener('videoView', function(event) {
@@ -191,4 +223,5 @@ document.addEventListener('videoView', function(event) {
 
 document.addEventListener('videoFinish', function(event) {
     // TODO not important now
+    // TODO go to next episode / save progress?
 });
