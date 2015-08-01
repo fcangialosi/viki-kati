@@ -119,11 +119,15 @@ function handleMessagesFromBackground(request,sender,sendResponse) {
         startCountdown();
         syncd = true;
     } else if (request.type == "video-event") {
-        console.log("got video event");
+        playerLocked = true;
         if (request.action == "pause") {
             playerObject.pause();
-            //playerObject.seekTo(request.time);
+            playerLocked = false;
         } else if (request.action == "resume") {
+            startCountdown();
+        } else if (request.action == "seek") {
+            playerObject.pause();
+            playerObject.seekTo(request.time);
             startCountdown();
         }
     }
@@ -131,7 +135,6 @@ function handleMessagesFromBackground(request,sender,sendResponse) {
 chrome.runtime.onMessage.addListener(handleMessagesFromBackground);
 
 readyButton.onclick = function () {
-    console.log("clicked ready button");
     readyButton.setAttribute('class', 'small ui inverted button loading');
     chrome.runtime.sendMessage({type : 'ready'}, function (response) {});
 }
@@ -141,23 +144,21 @@ var countdown_overlay;
 var countdown_text;
 
 function countdown() {
-    console.log("countdown event fired!");
     if (countdown_position > 1) {
         countdown_position -= 1;
         countdown_text = document.getElementById("overlay-text")
         countdown_text.innerHTML = countdown_position.toString();
         setTimeout(countdown, 1000);
-        console.log("decreased number to " + countdown_position.toString());
     } else {
         countdown_overlay = document.getElementById("overlay");
         countdown_overlay.parentElement.removeChild(countdown_overlay);
         playerLocked = true;
         playerObject.playVideo();
         countdown_position = 3;
-        console.log("finished counting down. stopping timer now.");
         playerLocked = false;
     }
 }
+
 function startCountdown() {
     console.log("start countdown...");
     countdown_overlay = document.createElement('DIV');
@@ -208,13 +209,26 @@ document.addEventListener('videoResume', function(event) {
             type : 'video-event',
             action : 'resume'
         });
+        // TODO add latency delay
         startCountdown();
         playerLocked = false;
     }
 });
 
 document.addEventListener('videoSeek', function(event) {
-
+    if (syncd && !playerLocked) {
+        playerLocked = true;
+        playerObject.pause();
+        myPosition = playerObject.getCurrentTime();
+        chrome.runtime.sendMessage({
+            type : 'video-event',
+            action : 'seek',
+            time : myPosition
+        });
+        // TODO add latency delay
+        startCountdown();
+        playerLocked = false;
+    }
 });
 
 document.addEventListener('videoView', function(event) {
