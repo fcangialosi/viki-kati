@@ -10,6 +10,13 @@ var syncd = false;
 var invitePending = false;
 var playerLocked = false;
 
+function unlockPlayer() {
+    playerLocked = false;
+}
+function lockPlayer() {
+    playerLocked = true;
+}
+
 // Create sidebar
 var side_div = document.createElement("DIV");
 side_div.setAttribute("style","width:168px;margin:10px;position:absolute");
@@ -142,15 +149,26 @@ function handleMessagesFromBackground(request,sender,sendResponse) {
     } else if (request.type == "video-event") {
         playerLocked = true;
         if (request.action == "pause") {
-            //playerObject.seekTo(request.time);
             playerObject.pause();
+            // Resync players if necessary
+            if (playerObject.getCurrentTime() != request.time) {
+                playerObject.seekTo(request.time);
+            }
             playerLocked = false;
         } else if (request.action == "resume") {
-            startCountdown();
+            setTimeout(startCountdown, request.wait);
         } else if (request.action == "seek") {
             playerObject.pause();
-            playerObject.seekTo(request.time);
-            startCountdown();
+            // Resync players (almost surely necessary)
+            if (playerObject.getCurrentTime() != request.time) {
+                playerObject.seekTo(request.time);
+            }
+            // If already paused when seeking, no need to restart player
+            if (!request.paused) {
+                setTimeout(startCountdown, request.wait);
+            } else {
+                playerLocked = false;
+            }
         }
     } else if (request.type == "friend-left") {
         console.log("friend left");
@@ -179,7 +197,7 @@ function countdown() {
         countdown_overlay.parentElement.removeChild(countdown_overlay);
         playerLocked = true;
         playerObject.playVideo();
-        countdown_position = 3;
+        countdown_position = 5;
         playerLocked = false;
     }
 }
@@ -215,6 +233,7 @@ document.addEventListener('videoStart', function(event) {
 document.addEventListener('videoPause', function(event) {
     console.log('pause');
     console.log(playerLocked);
+    playerPaused = true;
     if (syncd && !playerLocked) {
         myPosition = playerObject.getCurrentTime();
         chrome.runtime.sendMessage({
@@ -228,6 +247,7 @@ document.addEventListener('videoPause', function(event) {
 document.addEventListener('videoResume', function(event) {
     console.log('resume');
     console.log(playerLocked);
+    playerPaused = false;
     if (syncd && !playerLocked) {
         playerLocked = true;
         playerObject.pause();
@@ -235,8 +255,6 @@ document.addEventListener('videoResume', function(event) {
             type : 'video-event',
             action : 'resume'
         });
-        // TODO add latency delay
-        startCountdown();
         playerLocked = false;
     }
 });
@@ -251,10 +269,9 @@ document.addEventListener('videoSeek', function(event) {
         chrome.runtime.sendMessage({
             type : 'video-event',
             action : 'seek',
+            paused : playerPaused,
             time : myPosition
         });
-        // TODO add latency delay
-        startCountdown();
         playerLocked = false;
     }
 });

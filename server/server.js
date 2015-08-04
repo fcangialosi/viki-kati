@@ -3,6 +3,7 @@ var io = require('socket.io').listen(927);
 client_sockets = {};
 rooms = {};
 users = {};
+latencies = {}
 
 var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012345678";
 function generateid(){
@@ -34,6 +35,13 @@ io.on('connection', function(socket) {
 		client_sockets[username] = socket;
 
 		console.log(username + " logged on.");
+	});
+
+	socket.on('ping', function(data) {
+		var username = data.username;
+		users[username].ping = data.ping;
+		console.log("got ping " + data.ping.toString() + " from " + username);
+		client_sockets[username].emit('pong', {});
 	});
 
 	socket.on('invite', function(data) {
@@ -104,9 +112,30 @@ io.on('connection', function(socket) {
 	socket.on('video-event', function(data) {
 		console.log(data);
 		var room = rooms[users[data.from].room_id];
-		for (var i=0; i < room.ready.length; i++) {
-			user = room.ready[i];
-			if (user != data.from) {
+		if (data.time) {
+			room.current_position = data.time;
+		}
+
+		if (data.action == "pause" || data.paused) {
+			for (var i=0; i < room.ready.length; i++) {
+				user = room.ready[i];
+				if (user != data.from) {
+					client_sockets[user].emit('video-event', data);
+				}
+			}
+		} else {
+			max_latency = 0;
+			for (var i=0; i < room.ready.length; i++) {
+				p = room.ready[i].ping;
+				if (p > max_latency) {
+					max_latency = p;
+				}
+			}
+			total_delay = max_latency + 150;
+			console.log("latency delay is " + total_delay.toString());
+			for (var i=0; i < room.ready.length; i++) {
+				user = room.ready[i];
+				data.wait = (total_delay - user.ping);
 				client_sockets[user].emit('video-event', data);
 			}
 		}

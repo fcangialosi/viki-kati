@@ -84,6 +84,47 @@ function iconClickedListener() {
   });
 }
 
+
+var ping = 0;
+var pingSent, pingRecv;
+var pings = [];
+var curr = 0;
+var PINGS_CACHE_LENGTH = 10;
+function median(arr) {
+  if (arr.length == 0) {
+    return null;
+  }
+  arr.concat().sort(function (a,b) {return a - b});
+  var mid = Math.floor(arr.length / 2);
+  if ((arr.length % 2) == 1)
+    return arr[mid];
+  else
+    return (arr[mid-1] + arr[mid]) / 2;
+}
+function pingServer() {
+  if (pingRecv != 0) { // if it's zero, then we haven't recieved the last ping we sent yet
+    pingSent = Date.now();
+    socket.emit("ping", {
+      ping : ping,
+      username : localStorage.username
+    });
+    pingRecv = 0;
+  }
+  if (pings.length >= PINGS_CACHE_LENGTH) {
+    setTimeout(pingServer, 5000);
+  } else {
+    setTimeout(pingServer, 2000);
+  }
+}
+function updateMedian(elapsed) {
+  pings[curr] = elapsed;
+  ping = median(pings);
+  curr += 1;
+  if (curr >= PINGS_CACHE_LENGTH) {
+    curr = 0;
+  }
+}
+
 /*
  * Entry point every time the browser runs this extension
  *
@@ -109,6 +150,7 @@ function onStartup() {
   // Switch from listening for settings to listening for content script messages
   chrome.runtime.onMessage.removeListener(handleMessagesFromSettings);
   chrome.runtime.onMessage.addListener(forwardToServer);
+  setTimeout(pingServer, 2000);
 }
 chrome.runtime.onStartup.addListener(onStartup);
 /******************************************************************************/
@@ -287,6 +329,12 @@ socket.on('friend-left', function(data) {
       sendToContentScript('friend-left', data);
     });
   });
+});
+
+socket.on('pong', function(data) {
+  pingRecv = Date.now();
+  elapsed = (pingRecv - pingSent) / 2;
+  updateMedian(elapsed);
 });
 /******************************************************************************/
 
