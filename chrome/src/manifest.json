@@ -26,7 +26,8 @@
     {
       "matches" : ["http://www.viki.com/videos/*"],
       "css" : ["semantic.min.css"],
-      "js" : ["content_script.js","injector.js"]
+      "js" : ["content_script.js","injector.js"],
+      "run_at": "document_end"
     }
   ],
 

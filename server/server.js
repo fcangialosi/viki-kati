@@ -1,19 +1,19 @@
 var io = require('socket.io').listen(927);
 
-client_sockets = {}
-rooms = {}
-users = {}
+client_sockets = {};
+rooms = {};
+users = {};
 
 var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012345678";
 function generateid(){
-	text = "";
+	var text = "";
 	for (var i=0; i < 5; i++) {
 		text += chars.charAt(Math.floor(Math.random() * chars.length));
 	}
 	return text;
 }
 function newid(){
-	id = generateid();
+	var id = generateid();
 	while (id in rooms) {
 		id = generateid();
 	}
@@ -29,7 +29,7 @@ io.on('connection', function(socket) {
 	});
 
 	socket.on('hello', function(data) {
-		username = data.username;
+		var username = data.username;
 		users[username] = {};
 		client_sockets[username] = socket;
 
@@ -39,9 +39,11 @@ io.on('connection', function(socket) {
 	socket.on('invite', function(data) {
 		console.log(data.from + " wants to watch " + data.video_title + " with " + data.to);
 
+		var room_id, room;
 		if ('room_id' in users[data.from] && users[data.from].room_id in rooms) {
-			console.log("User is already in room: " + room_id);
 			room_id = users[data.from].room_id;
+			room = rooms[room_id];
+			console.log("User is already in room: " + room_id);
 		} else { // Create new room
 			room_id = newid();
 			room = {
@@ -55,11 +57,14 @@ io.on('connection', function(socket) {
 			console.log("User not in room. Create new one: " + room_id);
 		}
 		data.room_id = room_id;
+		data.viewers = room.viewers;
 
 		if (data.to in client_sockets) {
 			client_sockets[data.to].emit('watch-request', data);
 		} else {
 			console.log(data.to + " is not currently online.");
+			data.answer = 'decline';
+			client_sockets[data.from].emit('watch-response', data);
 		}
 	});
 
@@ -70,20 +75,20 @@ io.on('connection', function(socket) {
 
 		if (data.answer == 'accept') { // Add self to room
 			console.log("Adding self to room " + data.room_id);
-			responder = data.to;
+			var responder = data.to;
 			users[responder].room_id = data.room_id;
 			rooms[data.room_id].viewers.push(responder);
+			//data.viewers = rooms[data.room_id].viewers;
 		}
-
 		client_sockets[data.from].emit('watch-response', data);
 	});
 
 	// TODO this is only the perfect case, need to handle
 	// when room or user hasn't been initialized yet
 	socket.on('ready', function(data) {
-		username = data.username;
+		var username = data.username;
 		console.log(username + " is ready in room " + users[username].room_id);
-		room = rooms[users[username].room_id];
+		var room = rooms[users[username].room_id];
 		room.ready.push(username);
 
 		if (room.viewers.length == room.ready.length) { // everyone is ready!
@@ -97,12 +102,31 @@ io.on('connection', function(socket) {
 	});
 
 	socket.on('video-event', function(data) {
-		room = rooms[users[data.from].room_id];
+		console.log(data);
+		var room = rooms[users[data.from].room_id];
 		for (var i=0; i < room.ready.length; i++) {
 			user = room.ready[i];
 			if (user != data.from) {
 				client_sockets[user].emit('video-event', data);
 			}
+		}
+	});
+
+	socket.on('leave-room', function(data) {
+		var room_id = users[data.from].room_id;
+		var room = rooms[room_id];
+		for (var i=0; i < room.ready.length; i++) {
+			user = room.ready[i];
+			if (user != data.from) {
+				client_sockets[user].emit('friend-left', data);
+			}
+		}
+		console.log(data.from + " left " + room_id);
+		room.ready.splice(room.ready.indexOf(data.from), 1);
+		room.viewers.splice(room.viewers.indexOf(data.from), 1);
+		users[data.from].room_id = null;
+		if (room.viewers.length < 1) {
+			delete rooms[room_id];
 		}
 	});
 });

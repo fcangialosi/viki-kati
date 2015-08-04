@@ -7,6 +7,8 @@ var playerObject;
 var playerFrame;
 var alone = true;
 var syncd = false;
+var invitePending = false;
+var playerLocked = false;
 
 // Create sidebar
 var side_div = document.createElement("DIV");
@@ -39,12 +41,40 @@ side_div.innerHTML = "<center>\
         <br>\
         <br>\
         <h4>Watching now:</h4>\
-        <p style=\"text-align:left;\">\
-            1. You\
-        </p>"
+        <ul style=\"text-align: left;\" id=\"viewer-list\">\
+        </ul>"
+
 
 // Insert sidebar into container
 watch.insertBefore(side_div, watch.childNodes[0]);
+
+ul = document.getElementById('viewer-list');
+
+function addViewer(viewer) {
+    console.log("adding viewer: " + viewer);
+    li = document.createElement("li");
+    li.setAttribute('id', 'viewer-'+viewer);
+    text = document.createTextNode(viewer);
+    li.appendChild(text);
+    ul.appendChild(li);
+}
+
+function removeViewer(viewer) {
+    li = document.getElementById('viewer-'+viewer);
+    if (li) {
+        li.parentNode.removeChild(li);
+    }
+}
+
+chrome.runtime.sendMessage({
+    type : 'get-viewers'
+}, function (response) {
+    console.log("got viewers: ");
+    console.log(response.viewers);
+    for (var i=0; i < response.viewers.length; i++) {
+        addViewer(response.viewers[i]);
+    }
+});
 
 // Add click handlers for invite
 var inviteButton = document.getElementById("inviteButton");
@@ -52,68 +82,59 @@ var inviteInput = document.getElementById("inviteInput");
 var readyButton = document.getElementById("readyButton");
 
 function inviteTimeout() {
-    inviteButton.setAttribute('class', 'tiny ui red icon button');
-    inviteButton.childNodes[1].setAttribute('class', 'remove icon');
+    if (invitePending) {
+        inviteButton.setAttribute('class', 'tiny ui red icon button');
+        inviteButton.childNodes[1].setAttribute('class', 'remove icon');
+    }
 }
 
 inviteButton.onclick = function inviteFriend() {
     var friend_name = inviteButton.parentNode.childNodes[1].value;
-    inviteButton.setAttribute('class', 'tiny ui red icon loading button');
-
-    // Parse video title + episode number
-    var video_title;
-    if (document.title.indexOf(" - ") > 0) {
-        video_title = document.title.split(" - ")[0];
+    var isLoading = (inviteButton.getAttribute('class').indexOf('loading') >= 0);
+    if (isLoading) {
+        inviteButton.setAttribute('class', 'tiny ui red icon button');
+        inviteButton.childNodes[1].setAttribute('class', 'plus icon');
     } else {
-        video_title = document.title;
+        inviteButton.setAttribute('class', 'tiny ui red icon loading button');
+
+        // Parse video title + episode number
+        var video_title;
+        if (document.title.indexOf(" - ") > 0) {
+            video_title = document.title.split(" - ")[0];
+        } else {
+            video_title = document.title;
+        }
+
+        // Notify background.js, send request to friend
+        chrome.runtime.sendMessage({
+            type : "invite",
+            to : friend_name,
+            video_title : video_title,
+            video_link : document.URL
+        }, function (response){});
     }
-
-    // Notify background.js, send request to friend
-    chrome.runtime.sendMessage({
-        type : "invite",
-        to : friend_name,
-        video_title : video_title,
-        video_link : document.URL
-    }, function (response){});
-
-    setTimeout(inviteTimeout, 7000);
 }
 
 inviteInput.onclick = function inviteFocus() {
     inviteInput.nextElementSibling.childNodes[1].setAttribute('class', 'plus icon');
 }
 
-var friend_count = 2;
-function appendFriend(friend) {
-    p = document.createElement("P");
-    text = document.createTextNode(friend_count.toString() + ". " + friend);
-    p.setAttribute('style', 'text-align:left;');
-    p.appendChild(text);
-    side_div.childNodes[0].appendChild(p);
-    friend_count += 1;
-}
 
 function handleMessagesFromBackground(request,sender,sendResponse) {
+    console.log("from background: ");
+    console.log(request);
     if (request.type == "watch-response") {
-        console.log("watch-response")
         inviteButton.setAttribute('class', 'tiny ui red icon button');
         inviteInput.value = "";
         if (request.answer == "accept") {
-            console.log("friend accepted");
-            clearTimeout(inviteTimeout);
+            invitePending = false;
             inviteButton.childNodes[1].setAttribute('class', 'checkmark icon');
-            appendFriend(request.to);
+            addViewer(request.to);
             alone = false;
         } else {
-            console.log("friend declined");
             inviteButton.childNodes[1].setAttribute('class', 'remove icon');
         }
-    } else if (request.type == "joined") {
-        console.log("joined");
-        appendFriend(request.to);
-        alone = false;
     } else if (request.type == "start") {
-        console.log("got start");
         readyButton.setAttribute('class', 'small disabled ui inverted grey button');
         readyButton.innerHTML = "Enjoy! :)";
         startCountdown();
@@ -121,6 +142,7 @@ function handleMessagesFromBackground(request,sender,sendResponse) {
     } else if (request.type == "video-event") {
         playerLocked = true;
         if (request.action == "pause") {
+            //playerObject.seekTo(request.time);
             playerObject.pause();
             playerLocked = false;
         } else if (request.action == "resume") {
@@ -130,6 +152,9 @@ function handleMessagesFromBackground(request,sender,sendResponse) {
             playerObject.seekTo(request.time);
             startCountdown();
         }
+    } else if (request.type == "friend-left") {
+        console.log("friend left");
+        removeViewer(request.from);
     }
 }
 chrome.runtime.onMessage.addListener(handleMessagesFromBackground);
@@ -175,9 +200,7 @@ function startCountdown() {
     setTimeout(countdown, 1000);
 }
 
-playerLocked = false;
 
-//     playerObject.getCurrentTime();
 document.addEventListener('videoLoad', function(event) {
     playerLoaded = true;
     playerObject = document.getElementById("flashObject").getElementsByTagName("object")[0];
@@ -190,9 +213,10 @@ document.addEventListener('videoStart', function(event) {
 });
 
 document.addEventListener('videoPause', function(event) {
+    console.log('pause');
+    console.log(playerLocked);
     if (syncd && !playerLocked) {
         myPosition = playerObject.getCurrentTime();
-        //playerObject.seekTo(myPosition);
         chrome.runtime.sendMessage({
             type : 'video-event',
             action : 'pause',
@@ -202,6 +226,8 @@ document.addEventListener('videoPause', function(event) {
 });
 
 document.addEventListener('videoResume', function(event) {
+    console.log('resume');
+    console.log(playerLocked);
     if (syncd && !playerLocked) {
         playerLocked = true;
         playerObject.pause();
@@ -216,6 +242,8 @@ document.addEventListener('videoResume', function(event) {
 });
 
 document.addEventListener('videoSeek', function(event) {
+    console.log('seek');
+    console.log(playerLocked);
     if (syncd && !playerLocked) {
         playerLocked = true;
         playerObject.pause();

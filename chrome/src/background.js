@@ -8,15 +8,14 @@
  * Last Updated: July 27, 2015
  */
 
-
-
-
 /**************
  * CONNECTION *
  **************/
 
 /******************************************************************************/
-var socket = io('http://104.131.18.154:927');
+SERVER = "104.131.18.154"
+PORT = "927"
+var socket = io('http://' + SERVER + ':' + PORT);
 socket.on('connect', function () {
   console.log("Connected to server successfully.");
 });
@@ -39,8 +38,7 @@ socket.on('connect', function () {
  */
 chrome.runtime.onInstalled.addListener(function (){
   localStorage.clear();
-  localStorage.username = null;
-  localStorage.nickname = null;
+  chrome.storage.local.clear();
 
   // Register listener that responds when user completes popup form
   chrome.runtime.onMessage.addListener(handleMessagesFromSettings);
@@ -56,12 +54,14 @@ chrome.runtime.onInstalled.addListener(function (){
  */
 function handleMessagesFromSettings(request,sender,sendResponse) {
   if (request.username) {
-    // Save preferences to local storage
     localStorage.username = request.username;
+    localStorage.nickname = request.nickname
+    chrome.storage.local.set({
+      session_viewers : [request.username]
+    });
     sendResponse({
       "resp": "OK"
     });
-    // Change browser action behavior now that we're setup
     onStartup();
   } else {
     sendResponse({
@@ -124,6 +124,7 @@ chrome.runtime.onStartup.addListener(onStartup);
 function forwardToServer(request,sender,sendResponse) {
     var destination = request.type;
     var data;
+    var forward = true;
 
     // Prepare data packet based on request type
     if (request.type == "invite") {
@@ -131,9 +132,9 @@ function forwardToServer(request,sender,sendResponse) {
       data = request;
       data.from = localStorage.username;
       localStorage.session_tab_id = sender.tab.id;
-      console.log("tab_id is " + sender.tab.id.toString());
 
     } else if (request.type == "ready") {
+
       console.log("forwarding ready to server");
       data = {
         username : localStorage.username
@@ -160,11 +161,40 @@ function forwardToServer(request,sender,sendResponse) {
       destination = "";
       data = {};
 
+    } else if (request.type == "get-viewers") {
+
+      forward = false;
+      chrome.storage.local.get('session_viewers', function (keys) {
+        console.log('responding with viewers from storage');
+        console.log(keys);
+        console.log(keys.session_viewers);
+        sendResponse({
+          viewers : keys.session_viewers
+        });
+      });
+
     }
 
-    // Send to server
-    socket.emit(destination, data);
+    if (forward) { // send to server
+      socket.emit(destination, data);
+    } else {
+      return true;
+    }
 }
+
+chrome.tabs.onRemoved.addListener(function onRemoved(tabId, removeInfo) {
+    console.log("a tab has been closed");
+    if (tabId == localStorage.session_tab_id) {
+        console.log("your viki tab has been closed, telling everyone else...");
+        socket.emit('leave-room', {
+            from : localStorage.username
+        });
+        chrome.storage.local.set({
+          session_viewers : [localStorage.username]
+        })
+        localStorage.session_tab_id = 0;
+    }
+});
 /******************************************************************************/
 
 
@@ -207,23 +237,55 @@ socket.on('watch-request', function(data) {
   });
 });
 
-// maybe for loop this with a couple different events and call it forward
+// TODO maybe for loop this with a couple different events and call it forward
 socket.on('watch-response', function(data) {
   console.log("watch-response");
-  console.log(data);
-  sendToContentScript('watch-response', data, function (response) {
-  });
+  if (data.answer == "accept") {
+    chrome.storage.local.get('session_viewers', function (keys) {
+      viewers = keys.session_viewers;
+      viewers.push(data.to);
+      chrome.storage.local.set({
+        session_viewers : viewers
+      }, function () {
+        sendToContentScript('watch-response', data);
+      });
+    });
+  } else {
+    sendToContentScript('watch-response', data);
+  }
 });
 
 socket.on('start', function(data) {
   console.log('all ready!');
-  sendToContentScript('start', {}, function (response) {
-  });
+  sendToContentScript('start', {});
 });
 
 socket.on('video-event', function(data) {
   console.log('got video event, forwarding to content script');
-  sendToContentScript('video-event', data, function (response) {
+  sendToContentScript('video-event', data);
+});
+
+socket.on('friend-joined', function(data) {
+  console.log(data.friend + " joined the room");
+  chrome.storage.local.get('session_viewers', function (keys) {
+    viewers = keys.session_viewers;
+    viewers.push(data.friend);
+    chrome.storage.local.set({
+      session_viewers : viewers
+    });
+  });
+});
+
+socket.on('friend-left', function(data) {
+  console.log(data.from + " left the room");
+  chrome.storage.local.get('session_viewers', function (keys) {
+    viewers = keys.session_viewers;
+    viewers.splice(viewers.indexOf(data.from), 1);
+    chrome.storage.local.set({
+      session_viewers : viewers
+    }, function () {
+      sendToContentScript('friend-left', data);
+    });
   });
 });
 /******************************************************************************/
@@ -239,15 +301,22 @@ socket.on('video-event', function(data) {
 chrome.notifications.onButtonClicked.addListener(function recievedResponse(id, buttonIndex) {
   request = requests[id];
   if (buttonIndex == 0) { // Join
-    chrome.tabs.create({url : request.video_link}, function tabCreated(tab) {
-      socket.emit('watch-response', {
-        from : request.from,
-        to : request.to,
-        answer : 'accept',
-        room_id : request.room_id
+    // Add self to viewer list
+    request.viewers.push(localStorage.username);
+    // Save to DB
+    chrome.storage.local.set({
+      session_viewers : request.viewers
+    }, function () {
+      // Create new tab to join the room
+      chrome.tabs.create({url : request.video_link}, function tabCreated(tab) {
+        socket.emit('watch-response', {
+          from : request.from,
+          to : request.to,
+          answer : 'accept',
+          room_id : request.room_id
+        });
+        localStorage.session_tab_id = tab.id;
       });
-      localStorage.session_tab_id = tab.id;
-      sendToContentScript('joined', {friend : request.from});
     });
   } else { // Decline
     socket.emit('watch-response', {
@@ -259,7 +328,3 @@ chrome.notifications.onButtonClicked.addListener(function recievedResponse(id, b
   }
 });
 /******************************************************************************/
-
-
-
-// TODO on tab close, exit the room, need to invite again to sync hem back up
