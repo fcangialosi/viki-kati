@@ -1,6 +1,76 @@
-// Get container
-var watch = document.getElementsByClassName("watch")[0];
+ul = document.getElementById('viewer-list');
+function addViewer(viewer) {
+    console.log("adding viewer: " + viewer);
+    li = document.createElement("li");
+    li.setAttribute('id', 'viewer-'+viewer);
+    text = document.createTextNode(viewer);
+    li.appendChild(text);
+    ul.appendChild(li);
+}
+function removeViewer(viewer) {
+    li = document.getElementById('viewer-'+viewer);
+    if (li) {
+        li.parentNode.removeChild(li);
+    }
+}
 
+stream = null;
+peer_id = null;
+
+var peer = new Peer({key: '42bimnywmj8umcxr'});
+peer.on('open', function(id) {
+	  console.log('My peer ID is: ' + id);
+		peer_id = id;
+		conn.on('data', function(data) {
+			console.log('Received:',data);
+		});
+		conn.send('Hello!');
+});
+peer.on('call', function(call) {
+	console.log("Got call!");
+	console.log(call);
+	console.log("My stream is",stream);
+	call.answer(stream);
+});
+
+var p = navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+p.then(function(mediaStream) {
+	console.log("Got media stream!");
+	stream = mediaStream;
+	var video = document.querySelector('video');
+	video.src = window.URL.createObjectURL(mediaStream);
+	video.onloadedmetadata = function(e) {
+		video.play();
+	};
+
+	chrome.runtime.sendMessage({
+			type : 'get-viewers'
+	}, function (response) {
+			console.log("got viewers: ");
+			console.log(response.viewers);
+			for (var i=0; i < response.viewers.length; i++) {
+					addViewer(response.viewers[i]);
+			}
+			console.log("Number of viewers: ",response.viewers.length);
+			if(response.viewers.length > 1) {
+				console.log("Number of viewers is greater than 1!");
+				console.log("Friend's peer id is",response.friend_peer_id);
+				var call = peer.call(response.friend_peer_id,stream);
+			}
+	});
+});
+p.catch(function(err) {
+	console.log(err.name);
+	console.log(err);
+});
+
+
+
+// Get container
+//var watch = document.getElementsByClassName("watch")[0];
+var watch = document.getElementsByClassName("cinematic-wrapper-row")[0];
+var player = watch.children[0];
+player.setAttribute("style","float:right");
 // Global variables
 var playerLoaded = false;
 var playerObject;
@@ -10,26 +80,27 @@ var syncd = false;
 var invitePending = false;
 var playerLocked = false;
 
+side_width = Math.floor((watch.clientWidth * 0.1675178754))
 // Create sidebar
 var side_div = document.createElement("DIV");
-side_div.setAttribute("style","width:168px;margin:10px;position:absolute");
-side_div.innerHTML = "<center>\
-        <img src=\"" + chrome.extension.getURL("./viki-kati-logo.png") + "\" height=\"50\" width=\"50\">\
+side_div.setAttribute("style","width:"+side_width+"px;margin-top:"+(side_width/10)+"px;position:absolute");
+side_div.innerHTML = "<center style=\"color:#fff\">\
+        <img src=\"" + chrome.extension.getURL("./viki-kati-logo.png") + "\" height=\""+(side_width/4)+"\" width=\""+(side_width/4)+"\">\
         <br>\
         <br>\
-        <button class=\"small ui inverted blue button\" style=\"width:120px\" id=\"readyButton\">\
+        <button class=\"small ui inverted blue button\" style=\"width:"+(side_width/2)+"px\" id=\"readyButton\">\
             Ready\
         </button>\
         <br>\
         <br>\
-        <button class=\"small ui inverted green button\" style=\"width:120px\">\
+        <button class=\"small ui inverted green button\" style=\"width:"+(side_width/2)+"px\">\
             Re-Sync\
         </button>\
         <br>\
         <br>\
         <br>\
         <br>\
-        <div class=\"field\" style=\"width:120px\">\
+        <div class=\"field\" style=\"width:"+(side_width/2)+"px\">\
             <label style=\"text-align:left\"> Invite: </label>\
             <div class=\"ui action input\">\
                 <input type=\"text\" placeholder=\"Friend\" style=\"width:83px;\" id=\"inviteInput\">\
@@ -42,39 +113,13 @@ side_div.innerHTML = "<center>\
         <br>\
         <h4>Watching now:</h4>\
         <ul style=\"text-align: left;\" id=\"viewer-list\">\
-        </ul>"
+        </ul></center>"
 
 
 // Insert sidebar into container
 watch.insertBefore(side_div, watch.childNodes[0]);
 
-ul = document.getElementById('viewer-list');
 
-function addViewer(viewer) {
-    console.log("adding viewer: " + viewer);
-    li = document.createElement("li");
-    li.setAttribute('id', 'viewer-'+viewer);
-    text = document.createTextNode(viewer);
-    li.appendChild(text);
-    ul.appendChild(li);
-}
-
-function removeViewer(viewer) {
-    li = document.getElementById('viewer-'+viewer);
-    if (li) {
-        li.parentNode.removeChild(li);
-    }
-}
-
-chrome.runtime.sendMessage({
-    type : 'get-viewers'
-}, function (response) {
-    console.log("got viewers: ");
-    console.log(response.viewers);
-    for (var i=0; i < response.viewers.length; i++) {
-        addViewer(response.viewers[i]);
-    }
-});
 
 // Add click handlers for invite
 var inviteButton = document.getElementById("inviteButton");
@@ -109,6 +154,7 @@ inviteButton.onclick = function inviteFriend() {
         chrome.runtime.sendMessage({
             type : "invite",
             to : friend_name,
+						from_peer_id : peer_id,
             video_title : video_title,
             video_link : document.URL
         }, function (response){});

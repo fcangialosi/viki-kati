@@ -38,6 +38,7 @@ io.on('connection', function(socket) {
 
 	socket.on('invite', function(data) {
 		console.log(data.from + " wants to watch " + data.video_title + " with " + data.to);
+		console.log(data.from + "'s peer id is " + data.from_peer_id);
 
 		var room_id, room;
 		if ('room_id' in users[data.from] && users[data.from].room_id in rooms) {

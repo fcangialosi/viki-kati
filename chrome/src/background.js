@@ -168,8 +168,10 @@ function forwardToServer(request,sender,sendResponse) {
         console.log('responding with viewers from storage');
         console.log(keys);
         console.log(keys.session_viewers);
+				console.log(localStorage.friend_peer_id);
         sendResponse({
-          viewers : keys.session_viewers
+          viewers : keys.session_viewers,
+					friend_peer_id : localStorage.friend_peer_id
         });
       });
 
@@ -186,6 +188,7 @@ chrome.tabs.onRemoved.addListener(function onRemoved(tabId, removeInfo) {
     console.log("a tab has been closed");
     if (tabId == localStorage.session_tab_id) {
         console.log("your viki tab has been closed, telling everyone else...");
+				localStorage.friend_peer_id = null;
         socket.emit('leave-room', {
             from : localStorage.username
         });
@@ -281,6 +284,7 @@ socket.on('friend-left', function(data) {
   chrome.storage.local.get('session_viewers', function (keys) {
     viewers = keys.session_viewers;
     viewers.splice(viewers.indexOf(data.from), 1);
+		localStorage.friend_peer_id = null;
     chrome.storage.local.set({
       session_viewers : viewers
     }, function () {
@@ -301,6 +305,8 @@ socket.on('friend-left', function(data) {
 chrome.notifications.onButtonClicked.addListener(function recievedResponse(id, buttonIndex) {
   request = requests[id];
   if (buttonIndex == 0) { // Join
+		// Save peer id of friend
+		localStorage.friend_peer_id = request.from_peer_id;
     // Add self to viewer list
     request.viewers.push(localStorage.username);
     // Save to DB
