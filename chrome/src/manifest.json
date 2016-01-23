@@ -1,5 +1,5 @@
 {
-  "name" : "Viki-캍이",
+  "name" : "Viki-같이",
   "version" : "0.1",
   "manifest_version" : 2,
 
@@ -24,9 +24,9 @@
 
   "content_scripts" : [
     {
-      "matches" : ["https://www.viki.com/videos/*"],
+      "matches" : ["https://www.viki.com/videos/*","http://www.viki.com/videos/*"],
       "css" : ["semantic.min.css"],
-      "js" : ["peer.min.js","content_script.js","injector.js"],
+      "js" : ["content_script.js","injector.js"],
       "run_at": "document_end"
     }
   ],

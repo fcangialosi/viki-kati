@@ -14,58 +14,6 @@ function removeViewer(viewer) {
     }
 }
 
-stream = null;
-peer_id = null;
-
-var peer = new Peer({key: '42bimnywmj8umcxr'});
-peer.on('open', function(id) {
-	  console.log('My peer ID is: ' + id);
-		peer_id = id;
-		conn.on('data', function(data) {
-			console.log('Received:',data);
-		});
-		conn.send('Hello!');
-});
-peer.on('call', function(call) {
-	console.log("Got call!");
-	console.log(call);
-	console.log("My stream is",stream);
-	call.answer(stream);
-});
-
-var p = navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-p.then(function(mediaStream) {
-	console.log("Got media stream!");
-	stream = mediaStream;
-	var video = document.querySelector('video');
-	video.src = window.URL.createObjectURL(mediaStream);
-	video.onloadedmetadata = function(e) {
-		video.play();
-	};
-
-	chrome.runtime.sendMessage({
-			type : 'get-viewers'
-	}, function (response) {
-			console.log("got viewers: ");
-			console.log(response.viewers);
-			for (var i=0; i < response.viewers.length; i++) {
-					addViewer(response.viewers[i]);
-			}
-			console.log("Number of viewers: ",response.viewers.length);
-			if(response.viewers.length > 1) {
-				console.log("Number of viewers is greater than 1!");
-				console.log("Friend's peer id is",response.friend_peer_id);
-				var call = peer.call(response.friend_peer_id,stream);
-			}
-	});
-});
-p.catch(function(err) {
-	console.log(err.name);
-	console.log(err);
-});
-
-
-
 // Get container
 //var watch = document.getElementsByClassName("watch")[0];
 var watch = document.getElementsByClassName("cinematic-wrapper-row")[0];
@@ -154,7 +102,6 @@ inviteButton.onclick = function inviteFriend() {
         chrome.runtime.sendMessage({
             type : "invite",
             to : friend_name,
-						from_peer_id : peer_id,
             video_title : video_title,
             video_link : document.URL
         }, function (response){});
