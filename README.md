@@ -10,7 +10,7 @@ browsers (at least Firefox), and video chat so that you can interact while
 watching. 
 
 If you're interested in helping out, please shoot me an email at
-frank@cs.umd.edu. If you have any features to suggest or bugs that you've found,
+frankc@csail.mit.edu. If you have any features to suggest or bugs that you've found,
 please open an issue on GitHub.
 
 
