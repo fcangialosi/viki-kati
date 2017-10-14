@@ -1,4 +1,4 @@
-Viki-캍이
+Viki-같이
 =========
 
 A chrome extension that synchronizes your Viki player with someone else so that
